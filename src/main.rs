@@ -9,16 +9,16 @@ use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    channel::{Channel, Receiver},
+  blocking_mutex::raw::CriticalSectionRawMutex,
+  channel::{Channel, Receiver},
 };
 use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
 #[cfg(actuator_servo)]
 use esp_hal::ledc::{
-    channel,
-    timer::{self, TimerIFace},
-    LSGlobalClkSource, Ledc, LowSpeed,
+  channel,
+  timer::{self, TimerIFace},
+  LSGlobalClkSource, Ledc, LowSpeed,
 };
 use esp_hal::{clock::CpuClock, rmt::Rmt, time::Rate, timer::timg::TimerGroup};
 use esp_hal_smartled::{buffer_size, color_order, RmtSmartLeds, WS2812B_TIMING};
@@ -47,8 +47,8 @@ pub static IP_UP: AtomicBool = AtomicBool::new(false);
 pub static MQTT_UP: AtomicBool = AtomicBool::new(false);
 
 pub enum Command {
-    Wink,
-    Color(RGB8),
+  Wink,
+  Color(RGB8),
 }
 
 pub static COMMANDS: Channel<CriticalSectionRawMutex, Command, 8> = Channel::new();
@@ -57,180 +57,179 @@ pub static COMMANDS: Channel<CriticalSectionRawMutex, Command, 8> = Channel::new
 static SERVO_TIMER: StaticCell<timer::Timer<'static, LowSpeed>> = StaticCell::new();
 
 struct CatHardware {
-    #[cfg(actuator_magnet)]
-    magnet: magnet::Magnet<'static>,
-    #[cfg(actuator_servo)]
-    servo: servo::Servo<'static>,
+  #[cfg(actuator_magnet)]
+  magnet: magnet::Magnet<'static>,
+  #[cfg(actuator_servo)]
+  servo: servo::Servo<'static>,
 }
 
 impl CatHardware {
-    async fn wave(&mut self) {
-        #[cfg(all(actuator_magnet, actuator_servo))]
-        join(self.magnet.wave(), self.servo.wave()).await;
-        #[cfg(all(actuator_magnet, not(actuator_servo)))]
-        self.magnet.wave().await;
-        #[cfg(all(actuator_servo, not(actuator_magnet)))]
-        self.servo.wave().await;
-    }
+  async fn wave(&mut self) {
+    #[cfg(all(actuator_magnet, actuator_servo))]
+    join(self.magnet.wave(), self.servo.wave()).await;
+    #[cfg(all(actuator_magnet, not(actuator_servo)))]
+    self.magnet.wave().await;
+    #[cfg(all(actuator_servo, not(actuator_magnet)))]
+    self.servo.wave().await;
+  }
 
-    fn wave_duration(&self) -> Duration {
-        #[cfg(all(actuator_magnet, actuator_servo))]
-        {
-            self.magnet.wave_duration().max(self.servo.wave_duration())
-        }
-        #[cfg(all(actuator_magnet, not(actuator_servo)))]
-        {
-            self.magnet.wave_duration()
-        }
-        #[cfg(all(actuator_servo, not(actuator_magnet)))]
-        {
-            self.servo.wave_duration()
-        }
+  fn wave_duration(&self) -> Duration {
+    #[cfg(all(actuator_magnet, actuator_servo))]
+    {
+      self.magnet.wave_duration().max(self.servo.wave_duration())
     }
+    #[cfg(all(actuator_magnet, not(actuator_servo)))]
+    {
+      self.magnet.wave_duration()
+    }
+    #[cfg(all(actuator_servo, not(actuator_magnet)))]
+    {
+      self.servo.wave_duration()
+    }
+  }
 }
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
-    let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
+  let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
 
-    esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 64 * 1024);
-    esp_alloc::heap_allocator!(size: 36 * 1024);
+  esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 64 * 1024);
+  esp_alloc::heap_allocator!(size: 36 * 1024);
 
-    let timg0 = TimerGroup::new(p.TIMG0);
-    esp_rtos::start(timg0.timer0, p.FROM_CPU_INTR0);
+  let timg0 = TimerGroup::new(p.TIMG0);
+  esp_rtos::start(timg0.timer0, p.FROM_CPU_INTR0);
 
-    let freq = Rate::from_mhz(80);
-    let rmt = Rmt::new(p.RMT, freq).unwrap().into_async();
-    let mut status_led =
-        RmtSmartLeds::<{ buffer_size::<RGB8>(1) }, _, RGB8, color_order::Rgb>::new(
-            WS2812B_TIMING,
-            rmt.channel0,
-            pin_onboard_led!(p),
-            freq,
-        )
-        .unwrap();
-    let eyes = led::Eyes::new(rmt.channel1, pin_ext_leds!(p), freq);
+  let freq = Rate::from_mhz(80);
+  let rmt = Rmt::new(p.RMT, freq).unwrap().into_async();
+  let mut status_led = RmtSmartLeds::<{ buffer_size::<RGB8>(1) }, _, RGB8, color_order::Rgb>::new(
+    WS2812B_TIMING,
+    rmt.channel0,
+    pin_onboard_led!(p),
+    freq,
+  )
+  .unwrap();
+  let eyes = led::Eyes::new(rmt.channel1, pin_ext_leds!(p), freq);
 
+  #[cfg(actuator_magnet)]
+  let magnet = magnet::Magnet::new(pin_blink!(p), false);
+
+  #[cfg(actuator_servo)]
+  let servo = {
+    let mut ledc = Ledc::new(p.LEDC);
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+    let servo_timer = SERVO_TIMER.init(ledc.timer::<LowSpeed>(timer::Number::Timer0));
+    servo_timer
+      .configure(timer::config::Config {
+        duty: timer::config::Duty::Duty14Bit,
+        clock_source: timer::LSClockSource::APBClk,
+        frequency: Rate::from_hz(50),
+      })
+      .unwrap();
+    servo::Servo::new(
+      ledc.channel(channel::Number::Channel0, pin_pwm!(p)),
+      servo_timer,
+    )
+  };
+
+  let hardware = CatHardware {
     #[cfg(actuator_magnet)]
-    let magnet = magnet::Magnet::new(pin_blink!(p), false);
-
+    magnet,
     #[cfg(actuator_servo)]
-    let servo = {
-        let mut ledc = Ledc::new(p.LEDC);
-        ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-        let servo_timer = SERVO_TIMER.init(ledc.timer::<LowSpeed>(timer::Number::Timer0));
-        servo_timer
-            .configure(timer::config::Config {
-                duty: timer::config::Duty::Duty14Bit,
-                clock_source: timer::LSClockSource::APBClk,
-                frequency: Rate::from_hz(50),
-            })
-            .unwrap();
-        servo::Servo::new(
-            ledc.channel(channel::Number::Channel0, pin_pwm!(p)),
-            servo_timer,
-        )
-    };
+    servo,
+  };
 
-    let hardware = CatHardware {
-        #[cfg(actuator_magnet)]
-        magnet,
-        #[cfg(actuator_servo)]
-        servo,
-    };
+  spawner.spawn(cat_task(eyes, hardware, COMMANDS.receiver()).unwrap());
 
-    spawner.spawn(cat_task(eyes, hardware, COMMANDS.receiver()).unwrap());
+  let stack = wifi::start(spawner, p.WIFI);
+  spawner.spawn(mqtt::task(stack, COMMANDS.sender()).unwrap());
 
-    let stack = wifi::start(spawner, p.WIFI);
-    spawner.spawn(mqtt::task(stack, COMMANDS.sender()).unwrap());
+  let mut status = led::StatusLed::new();
+  let mut shown: Option<RGB8> = None;
 
-    let mut status = led::StatusLed::new();
-    let mut shown: Option<RGB8> = None;
+  loop {
+    let health = led::Health::new(
+      WIFI_UP.load(Ordering::Relaxed),
+      IP_UP.load(Ordering::Relaxed),
+      MQTT_UP.load(Ordering::Relaxed),
+    );
+    let frame = status.next(health, Instant::now().as_millis());
 
-    loop {
-        let health = led::Health::new(
-            WIFI_UP.load(Ordering::Relaxed),
-            IP_UP.load(Ordering::Relaxed),
-            MQTT_UP.load(Ordering::Relaxed),
-        );
-        let frame = status.next(health, Instant::now().as_millis());
-
-        if frame.color != shown {
-            status_led
-                .write([frame.color.unwrap_or(led::BLACK)])
-                .await
-                .unwrap();
-            shown = frame.color;
-        }
-
-        Timer::after(Duration::from_millis(frame.wait_ms)).await;
+    if frame.color != shown {
+      status_led
+        .write([frame.color.unwrap_or(led::BLACK)])
+        .await
+        .unwrap();
+      shown = frame.color;
     }
+
+    Timer::after(Duration::from_millis(frame.wait_ms)).await;
+  }
 }
 
 #[embassy_executor::task]
 async fn cat_task(
-    mut eyes: led::Eyes<'static>,
-    mut hardware: CatHardware,
-    receiver: Receiver<'static, CriticalSectionRawMutex, Command, 8>,
+  mut eyes: led::Eyes<'static>,
+  mut hardware: CatHardware,
+  receiver: Receiver<'static, CriticalSectionRawMutex, Command, 8>,
 ) -> ! {
-    let boot_started = Instant::now();
-    let mut pulse = led::Pulse::new();
-    let mut fade = led::Fade::new(led::YELLOW);
-    let mut last_phase = u8::MAX;
-    let mut booting = true;
-    let mut pending = None;
+  let boot_started = Instant::now();
+  let mut pulse = led::Pulse::new();
+  let mut fade = led::Fade::new(led::YELLOW);
+  let mut last_phase = u8::MAX;
+  let mut booting = true;
+  let mut pending = None;
 
-    loop {
-        while booting {
-            let (phase, target) = if IP_UP.load(Ordering::Relaxed) {
-                (2, led::GREEN)
-            } else if boot_started.elapsed() < BOOT_YELLOW_PERIOD {
-                (0, led::YELLOW)
-            } else {
-                (1, led::BLUE)
-            };
+  loop {
+    while booting {
+      let (phase, target) = if IP_UP.load(Ordering::Relaxed) {
+        (2, led::GREEN)
+      } else if boot_started.elapsed() < BOOT_YELLOW_PERIOD {
+        (0, led::YELLOW)
+      } else {
+        (1, led::BLUE)
+      };
 
-            let event = if pending.is_none() {
-                select(receiver.receive(), Timer::after(BOOT_PULSE_INTERVAL)).await
-            } else {
-                Timer::after(BOOT_PULSE_INTERVAL).await;
-                Either::Second(())
-            };
+      let event = if pending.is_none() {
+        select(receiver.receive(), Timer::after(BOOT_PULSE_INTERVAL)).await
+      } else {
+        Timer::after(BOOT_PULSE_INTERVAL).await;
+        Either::Second(())
+      };
 
-            if let Either::First(command) = event {
-                pending = Some(command);
-            }
+      if let Either::First(command) = event {
+        pending = Some(command);
+      }
 
-            if phase != last_phase {
-                match phase {
-                    0 => println!("Booting..."),
-                    1 => println!("Waiting for DHCP..."),
-                    _ => println!("Waiting for MQTT..."),
-                }
-                last_phase = phase;
-            }
-
-            let color = fade.next(target);
-            eyes.write_brightness(color, pulse.next()).await;
-
-            if pending.is_some() && fade.is_settled(target) {
-                booting = false;
-            }
+      if phase != last_phase {
+        match phase {
+          0 => println!("Booting..."),
+          1 => println!("Waiting for DHCP..."),
+          _ => println!("Waiting for MQTT..."),
         }
+        last_phase = phase;
+      }
 
-        let command = match pending.take() {
-            Some(command) => command,
-            None => receiver.receive().await,
-        };
+      let color = fade.next(target);
+      eyes.write_brightness(color, pulse.next()).await;
 
-        match command {
-            Command::Color(color) => {
-                eyes.set_color(color).await;
-            }
-            Command::Wink => {
-                join(eyes.wink(hardware.wave_duration()), hardware.wave()).await;
-                eyes.fade_out().await;
-            }
-        }
+      if pending.is_some() && fade.is_settled(target) {
+        booting = false;
+      }
     }
+
+    let command = match pending.take() {
+      Some(command) => command,
+      None => receiver.receive().await,
+    };
+
+    match command {
+      Command::Color(color) => {
+        eyes.set_color(color).await;
+      }
+      Command::Wink => {
+        join(eyes.wink(hardware.wave_duration()), hardware.wave()).await;
+        eyes.fade_out().await;
+      }
+    }
+  }
 }

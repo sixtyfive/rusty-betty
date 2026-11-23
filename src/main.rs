@@ -20,7 +20,7 @@ use esp_hal::ledc::{
   timer::{self, TimerIFace},
   LSGlobalClkSource, Ledc, LowSpeed,
 };
-use esp_hal::{clock::CpuClock, rmt::Rmt, time::Rate, timer::timg::TimerGroup};
+use esp_hal::{clock::CpuClock, rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
 use esp_println::println;
 use smart_leds::RGB8;
 #[cfg(actuator_servo)]
@@ -30,6 +30,11 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 const BOOT_PULSE_INTERVAL: Duration = Duration::from_millis(25);
 const BOOT_YELLOW_PERIOD: Duration = Duration::from_millis(1500);
+
+const BLINK_GAP_MIN_MS: u64 = 2500;
+const BLINK_GAP_MAX_MS: u64 = 5000;
+const BLINK_DOUBLE_GAP: Duration = Duration::from_millis(150);
+const BLINK_DOUBLE_CHANCE: u32 = 4;
 
 include!(concat!(env!("OUT_DIR"), "/config.rs"));
 
@@ -47,7 +52,7 @@ pub static IP_UP: AtomicBool = AtomicBool::new(false);
 pub static MQTT_UP: AtomicBool = AtomicBool::new(false);
 
 pub enum Command {
-  Wink,
+  Wave,
   Color(RGB8),
 }
 
@@ -72,21 +77,6 @@ impl CatHardware {
     #[cfg(all(actuator_servo, not(actuator_magnet)))]
     self.servo.wave().await;
   }
-
-  fn wave_duration(&self) -> Duration {
-    #[cfg(all(actuator_magnet, actuator_servo))]
-    {
-      self.magnet.wave_duration().max(self.servo.wave_duration())
-    }
-    #[cfg(all(actuator_magnet, not(actuator_servo)))]
-    {
-      self.magnet.wave_duration()
-    }
-    #[cfg(all(actuator_servo, not(actuator_magnet)))]
-    {
-      self.servo.wave_duration()
-    }
-  }
 }
 
 #[esp_rtos::main]
@@ -101,8 +91,8 @@ async fn main(spawner: Spawner) -> ! {
 
   let freq = Rate::from_mhz(80);
   let rmt = Rmt::new(p.RMT, freq).unwrap().into_async();
-  let mut status_led = led_builtin::BuiltinLed::new(rmt.channel0, pin_onboard_led!(p), freq);
-  let eyes = eye_leds::Eyes::new(rmt.channel1, pin_ext_leds!(p), freq);
+  let mut status_led = led_builtin::BuiltinLed::new(rmt.channel0, pin_led_builtin!(p), freq);
+  let eyes = eye_leds::Eyes::new(rmt.channel1, pin_eye_leds!(p), freq);
 
   #[cfg(actuator_magnet)]
   let magnet = magnet::Magnet::new(pin_blink!(p), false);
@@ -153,6 +143,30 @@ async fn main(spawner: Spawner) -> ! {
   }
 }
 
+fn blink_gap(rng: &Rng) -> Duration {
+  let span = BLINK_GAP_MAX_MS - BLINK_GAP_MIN_MS + 1;
+  Duration::from_millis(BLINK_GAP_MIN_MS + u64::from(rng.random()) % span)
+}
+
+async fn eye_activity(eyes: &mut eye_leds::Eyes<'_>, rng: &Rng, total: Duration) {
+  eyes.show().await;
+
+  let deadline = Instant::now() + total;
+  loop {
+    let gap = blink_gap(rng);
+    if Instant::now() + gap >= deadline {
+      break;
+    }
+    Timer::after(gap).await;
+    eyes.blink().await;
+
+    if rng.random() % BLINK_DOUBLE_CHANCE == 0 && Instant::now() + BLINK_DOUBLE_GAP < deadline {
+      Timer::after(BLINK_DOUBLE_GAP).await;
+      eyes.blink().await;
+    }
+  }
+}
+
 #[embassy_executor::task]
 async fn cat_task(
   mut eyes: eye_leds::Eyes<'static>,
@@ -160,6 +174,7 @@ async fn cat_task(
   receiver: Receiver<'static, CriticalSectionRawMutex, Command, 8>,
 ) -> ! {
   let boot_started = Instant::now();
+  let rng = Rng::new();
   let mut pulse = eye_leds::Pulse::new();
   let mut fade = eye_leds::Fade::new(eye_leds::YELLOW);
   let mut last_phase = u8::MAX;
@@ -213,8 +228,13 @@ async fn cat_task(
       Command::Color(color) => {
         eyes.set_color(color).await;
       }
-      Command::Wink => {
-        join(eyes.wink(hardware.wave_duration()), hardware.wave()).await;
+      Command::Wave => {
+        let activity = eye_activity(
+          &mut eyes,
+          &rng,
+          Duration::from_millis(EYE_ACTIVITY_DURATION_MS),
+        );
+        join(activity, hardware.wave()).await;
         eyes.fade_out().await;
       }
     }

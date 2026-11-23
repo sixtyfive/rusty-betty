@@ -64,28 +64,14 @@ fn main() {
   )
   .unwrap();
 
-  let wink_off_ms = opt_i("cat", "wink_off_ms").unwrap_or(300);
+  let eye_activity_duration = opt_i("cat", "eye_activity_duration").unwrap_or(30_000);
   assert!(
-    wink_off_ms >= 0,
-    "Error: [cat] wink_off_ms must not be negative!"
-  );
-  writeln!(out, "pub const WINK_OFF_MS: u64 = {wink_off_ms};\n").unwrap();
-
-  let wink_on_ms = opt_i("cat", "wink_on_ms").unwrap_or(500);
-  assert!(
-    wink_on_ms >= 0,
-    "Error: [cat] wink_on_ms must not be negative!"
-  );
-  writeln!(out, "pub const WINK_ON_MS: u64 = {wink_on_ms};\n").unwrap();
-
-  let magnet_coast_ms = opt_i("cat", "magnet_coast_ms").unwrap_or(10_000);
-  assert!(
-    magnet_coast_ms >= 0,
-    "Error: [cat] magnet_coast_ms must not be negative!"
+    eye_activity_duration >= 0,
+    "Error: [cat] eye_activity_duration must not be negative!"
   );
   writeln!(
     out,
-    "#[allow(dead_code)]\npub const MAGNET_COAST_MS: u64 = {magnet_coast_ms};\n"
+    "pub const EYE_ACTIVITY_DURATION_MS: u64 = {eye_activity_duration};\n"
   )
   .unwrap();
 
@@ -243,8 +229,8 @@ fn main() {
 
   let mut used = HashSet::new();
   for key in [
-    "onboard_led",
-    "ext_leds",
+    "led_builtin",
+    "eye_leds",
     "blink",
     "i2c_sda",
     "i2c_scl",

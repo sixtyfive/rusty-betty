@@ -116,47 +116,30 @@ fn approach_clamps_at_target() {
 }
 
 #[test]
-fn wink_phases_preserve_cycle_length() {
-  let phases = wink_phases(4000, 300, 500);
-  assert_eq!(phases.iter().sum::<u64>(), 4000);
-  assert_eq!(phases[1], 300);
-  assert_eq!(phases[2], 500);
-  assert_eq!(phases[3], 300);
-  assert_eq!(phases[0], phases[4]);
+fn blink_closes_fast_in_coarse_steps() {
+  let values: Vec<u8> = blink_close().collect();
+  assert_eq!(values, [255, 204, 153, 102, 51, 0]);
 }
 
 #[test]
-fn wink_phases_shrink_ons_when_off_grows() {
-  let short_off = wink_phases(4000, 100, 500);
-  let long_off = wink_phases(4000, 500, 500);
-  assert_eq!(short_off.iter().sum::<u64>(), 4000);
-  assert_eq!(long_off.iter().sum::<u64>(), 4000);
-  assert!(short_off[0] > long_off[0]);
+fn blink_opens_slower_in_finer_steps() {
+  let values: Vec<u8> = blink_open().collect();
+  assert_eq!(
+    values,
+    [0, 25, 50, 75, 100, 125, 150, 175, 200, 225, 250, 255]
+  );
+  assert!(values.windows(2).all(|pair| pair[0] < pair[1]));
 }
 
 #[test]
-fn wink_phases_middle_on_is_configurable() {
-  let short_mid = wink_phases(4000, 300, 200);
-  let long_mid = wink_phases(4000, 300, 800);
-  assert_eq!(short_mid[2], 200);
-  assert_eq!(long_mid[2], 800);
-  assert!(short_mid[0] > long_mid[0]);
-  assert_eq!(short_mid.iter().sum::<u64>(), 4000);
-  assert_eq!(long_mid.iter().sum::<u64>(), 4000);
-}
+fn blink_ramps_cover_all_brightness_values() {
+  let close: Vec<u8> = blink_close().collect();
+  let open: Vec<u8> = blink_open().collect();
 
-#[test]
-fn wink_phases_clamp_oversized_off() {
-  let phases = wink_phases(1000, 10_000, 500);
-  assert_eq!(phases, [0, 500, 0, 500, 0]);
-  assert_eq!(phases.iter().sum::<u64>(), 1000);
-}
-
-#[test]
-fn wink_phases_clamp_oversized_middle_on() {
-  let phases = wink_phases(1000, 100, 10_000);
-  assert_eq!(phases, [0, 100, 800, 100, 0]);
-  assert_eq!(phases.iter().sum::<u64>(), 1000);
+  assert_eq!(close.first(), Some(&PULSE_MAX));
+  assert_eq!(close.last(), Some(&0));
+  assert_eq!(open.first(), Some(&0));
+  assert_eq!(open.last(), Some(&PULSE_MAX));
 }
 
 #[test]

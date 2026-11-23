@@ -5,13 +5,16 @@ use smart_leds::{SmartLedsWriteAsync, RGB8};
 
 use betty_core::eye_leds::scale;
 pub use betty_core::eye_leds::{
-  color_by_name, wink_phases, Fade, Pulse, BLACK, BLUE, GREEN, PULSE_MAX, WINK_CYCLES, YELLOW,
+  blink_close, blink_open, color_by_name, Fade, Pulse, BLACK, BLUE, GREEN, PULSE_MAX, YELLOW,
 };
 
 const LED_COUNT: usize = 2;
 
 const FADE_OUT_STEP: u8 = 8;
 const FADE_OUT_INTERVAL: Duration = Duration::from_millis(25);
+
+const BLINK_STEP_INTERVAL: Duration = Duration::from_millis(15);
+const BLINK_HOLD_INTERVAL: Duration = Duration::from_millis(30);
 
 pub struct Eyes<'d> {
   leds: RmtSmartLeds<'d, { buffer_size::<RGB8>(LED_COUNT) }, Async, RGB8, color_order::Rgb>,
@@ -57,22 +60,6 @@ impl<'d> Eyes<'d> {
     self.write(BLACK).await;
   }
 
-  pub async fn wink(&mut self, total: Duration) {
-    let cycle_ms = total.as_millis() / WINK_CYCLES as u64;
-    let phases = wink_phases(cycle_ms, crate::WINK_OFF_MS, crate::WINK_ON_MS);
-
-    for _ in 0..WINK_CYCLES {
-      for (phase, &ms) in phases.iter().enumerate() {
-        if phase % 2 == 0 {
-          self.show().await;
-        } else {
-          self.write(BLACK).await;
-        }
-        Timer::after(Duration::from_millis(ms)).await;
-      }
-    }
-  }
-
   pub async fn fade_out(&mut self) {
     let color = self.saved;
     let mut brightness = PULSE_MAX;
@@ -82,6 +69,20 @@ impl<'d> Eyes<'d> {
       Timer::after(FADE_OUT_INTERVAL).await;
     }
     self.black().await;
+  }
+
+  pub async fn blink(&mut self) {
+    let color = self.saved;
+
+    for brightness in blink_close() {
+      self.write_brightness(color, brightness).await;
+      Timer::after(BLINK_STEP_INTERVAL).await;
+    }
+    Timer::after(BLINK_HOLD_INTERVAL).await;
+    for brightness in blink_open() {
+      self.write_brightness(color, brightness).await;
+      Timer::after(BLINK_STEP_INTERVAL).await;
+    }
   }
 
   async fn write(&mut self, color: RGB8) {

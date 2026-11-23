@@ -29,8 +29,6 @@ impl<'d> BuiltinLed<'d> {
     Self { leds, shown: None }
   }
 
-  /// Shows `color`, or switches the LED off when `None` is given. Repeated
-  /// calls with the same value do not touch the LED again.
   pub async fn show(&mut self, color: Option<RGB8>) {
     if color == self.shown {
       return;

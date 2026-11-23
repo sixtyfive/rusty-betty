@@ -3,8 +3,6 @@ use esp_hal::gpio::{Level, Output, OutputConfig, OutputPin};
 
 const HELP_PULSES: u64 = 10;
 
-const COAST_AFTER_OFF: Duration = Duration::from_millis(crate::MAGNET_COAST_MS);
-
 fn help_delay_us(i: u64) -> u64 {
   100_000 * (i + 2) / 2
 }
@@ -41,19 +39,5 @@ impl<'d> Magnet<'d> {
       self.pin.set_low();
       Timer::after(self.sleep_after_wave).await;
     }
-  }
-
-  pub fn wave_duration(&self) -> Duration {
-    let active = if self.needs_help {
-      let mut us = 0u64;
-      for i in 0..HELP_PULSES {
-        let delay_us = help_delay_us(i);
-        us += delay_us * 9 / 5 + delay_us * 3 / 4;
-      }
-      Duration::from_micros(us)
-    } else {
-      self.duration
-    };
-    active + COAST_AFTER_OFF
   }
 }

@@ -15,7 +15,20 @@ const PULSE_STEP: u8 = 8;
 
 const FADE_STEP: u8 = 6;
 
-pub const WINK_CYCLES: u32 = 3;
+const BLINK_CLOSE_STEPS: u8 = 5;
+const BLINK_CLOSE_STEP: u8 = 51;
+const BLINK_OPEN_STEPS: u8 = 10;
+const BLINK_OPEN_STEP: u8 = 25;
+
+pub fn blink_close() -> impl Iterator<Item = u8> {
+  (0..=BLINK_CLOSE_STEPS).map(|step| PULSE_MAX - step * BLINK_CLOSE_STEP)
+}
+
+pub fn blink_open() -> impl Iterator<Item = u8> {
+  (0..=BLINK_OPEN_STEPS)
+    .map(|step| step * BLINK_OPEN_STEP)
+    .chain(core::iter::once(PULSE_MAX))
+}
 
 pub struct Pulse {
   brightness: u8,
@@ -76,14 +89,6 @@ fn approach(from: u8, to: u8) -> u8 {
   } else {
     from - step
   }
-}
-
-pub fn wink_phases(cycle_ms: u64, off_ms: u64, mid_on_ms: u64) -> [u64; 5] {
-  let off_ms = off_ms.min(cycle_ms / 2);
-  let mid_on_ms = mid_on_ms.min(cycle_ms - 2 * off_ms);
-  let edge = (cycle_ms - 2 * off_ms - mid_on_ms) / 2;
-  let middle = cycle_ms - 2 * off_ms - 2 * edge;
-  [edge, off_ms, middle, off_ms, edge]
 }
 
 pub fn scale(color: RGB8, brightness: u8) -> RGB8 {

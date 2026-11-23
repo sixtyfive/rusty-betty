@@ -171,7 +171,7 @@ async fn session(
   crate::MQTT_UP.store(true, Ordering::Relaxed);
   println!("Boot complete, waving with green eyes");
   let _ = commands.try_send(Command::Color(crate::eye_leds::GREEN));
-  let _ = commands.try_send(Command::Wink);
+  let _ = commands.try_send(Command::Wave);
 
   let ping_every = Duration::from_millis((crate::MQTT_KEEPALIVE_MS / 2).max(1));
   let mut next_ping = Instant::now() + ping_every;
@@ -215,7 +215,7 @@ async fn session(
             }
           } else if topic == "winkekatze/allcats" || topic.ends_with("command") {
             publish(&mut client, &status_topic, "fishing", false).await?;
-            let _ = commands.try_send(Command::Wink);
+            let _ = commands.try_send(Command::Wave);
           } else if topic == reset_topic {
             esp_hal::system::software_reset();
           } else if topic == config_topic {

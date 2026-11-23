@@ -16,7 +16,7 @@ use esp_hal::{
   time::{Instant, Rate},
 };
 use esp_hal_smartled::{buffer_size, color_order, RmtSmartLeds, WS2812B_TIMING};
-use esp_println::println;
+use esp_println::{print, println};
 use smart_leds::{SmartLedsWrite, RGB8};
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -47,10 +47,13 @@ fn main() -> ! {
 
   let mut gpio22 = Output::new(p.GPIO22, Level::Low, OutputConfig::default());
 
-  let mut i2c = I2c::new(p.I2C0, I2cConfig::default())
-    .unwrap()
-    .with_sda(p.GPIO3)
-    .with_scl(p.GPIO4);
+  let mut i2c = I2c::new(
+    p.I2C0,
+    I2cConfig::default().with_frequency(Rate::from_khz(10)),
+  )
+  .unwrap()
+  .with_sda(p.GPIO5)
+  .with_scl(p.GPIO4);
 
   let mut ledc = Ledc::new(p.LEDC);
   ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
@@ -83,7 +86,8 @@ fn main() -> ! {
   let mut last_lvl = u8::MAX;
   let mut addr = 1u8;
   let mut found = 0u128;
-  let mut last_found = u128::MAX;
+  let mut latest_found = 0u128;
+  let mut last_scan_report = 0u64;
 
   loop {
     let now = Instant::now().duration_since_epoch().as_millis();
@@ -100,11 +104,23 @@ fn main() -> ! {
     addr += 1;
     if addr > 126 {
       addr = 1;
-      if found != last_found {
-        println!("I²C device bitmask: {:#034x}", found);
-        last_found = found;
-      }
+      latest_found = found;
       found = 0;
+    }
+
+    if now - last_scan_report >= 1000 {
+      last_scan_report = now;
+      if latest_found == 0 {
+        println!("I²C devices: none");
+      } else {
+        print!("I²C devices:");
+        for a in 1..=126u8 {
+          if latest_found & (1u128 << a) != 0 {
+            print!(" {:#04x}", a);
+          }
+        }
+        println!();
+      }
     }
 
     let raw = nb::block!(adc.read_oneshot(&mut adc_pin)).unwrap_or(0);

@@ -51,6 +51,7 @@ pub fn start(spawner: Spawner, wifi: WIFI<'static>) -> Stack<'static> {
 async fn ip_task(stack: Stack<'static>) -> ! {
     loop {
         stack.wait_config_up().await;
+        crate::IP_UP.store(true, Ordering::Relaxed);
         if let Some(cfg) = stack.config_v4() {
             // embassy-net does not expose the DHCP server identifier (option 54),
             // so use the gateway, which is normally the DHCP server anyway.
@@ -71,6 +72,7 @@ async fn ip_task(stack: Stack<'static>) -> ! {
             }
         }
         stack.wait_config_down().await;
+        crate::IP_UP.store(false, Ordering::Relaxed);
     }
 }
 

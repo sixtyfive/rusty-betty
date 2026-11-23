@@ -8,11 +8,12 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
 #[cfg(all(actuator_magnet, actuator_servo))]
 use embassy_futures::join::join;
+use embassy_futures::select::{select, Either};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     channel::{Channel, Receiver},
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
 #[cfg(actuator_servo)]
 use esp_hal::ledc::{
@@ -29,6 +30,11 @@ use static_cell::StaticCell;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+/// How often the boot animation updates the eye LEDs.
+const BOOT_PULSE_INTERVAL: Duration = Duration::from_millis(25);
+/// How long the eyes pulse yellow before showing WiFi/MQTT progress.
+const BOOT_YELLOW_PERIOD: Duration = Duration::from_millis(1500);
+
 include!(concat!(env!("OUT_DIR"), "/config.rs"));
 
 mod led;
@@ -40,6 +46,7 @@ mod servo;
 mod wifi;
 
 pub static WIFI_UP: AtomicBool = AtomicBool::new(false);
+pub static IP_UP: AtomicBool = AtomicBool::new(false);
 pub static MQTT_UP: AtomicBool = AtomicBool::new(false);
 
 pub enum Command {
@@ -155,19 +162,68 @@ async fn cat_task(
     mut hardware: CatHardware,
     receiver: Receiver<'static, CriticalSectionRawMutex, Command, 8>,
 ) -> ! {
-    println!("Eye LEDs yellow (bootup...)");
-    eyes.set_color(led::YELLOW).await;
+    let boot_started = Instant::now();
+    let mut pulse = led::Pulse::new();
+    let mut fade = led::Fade::new(led::YELLOW);
+    let mut last_phase = u8::MAX;
+    let mut booting = true;
+    let mut pending = None;
 
+    // Pulse the eyes while booting: yellow first, then blue until an IP address
+    // is acquired, then green while waiting for MQTT. Commands are only handled
+    // once the color transition has settled, so MQTT coming online cannot cut a
+    // fade short.
     loop {
-        match receiver.receive().await {
+        while booting {
+            let (phase, target) = if IP_UP.load(Ordering::Relaxed) {
+                (2, led::GREEN)
+            } else if boot_started.elapsed() < BOOT_YELLOW_PERIOD {
+                (0, led::YELLOW)
+            } else {
+                (1, led::BLUE)
+            };
+
+            let event = if pending.is_none() {
+                select(receiver.receive(), Timer::after(BOOT_PULSE_INTERVAL)).await
+            } else {
+                Timer::after(BOOT_PULSE_INTERVAL).await;
+                Either::Second(())
+            };
+
+            if let Either::First(command) = event {
+                pending = Some(command);
+            }
+
+            if phase != last_phase {
+                match phase {
+                    0 => println!("Eye LEDs pulsing yellow (bootup...)"),
+                    1 => println!("Eye LEDs pulsing blue (waiting for WiFi/IP)"),
+                    _ => println!("Eye LEDs pulsing green (waiting for MQTT)"),
+                }
+                last_phase = phase;
+            }
+
+            let color = fade.next(target);
+            eyes.write_brightness(color, pulse.next()).await;
+
+            if pending.is_some() && fade.is_settled(target) {
+                booting = false;
+            }
+        }
+
+        let command = match pending.take() {
+            Some(command) => command,
+            None => receiver.receive().await,
+        };
+
+        match command {
             Command::Color(color) => {
-                println!("Eye LEDs: rgb({}, {}, {})", color.r, color.g, color.b);
                 eyes.set_color(color).await;
             }
             Command::Wink => {
                 eyes.show().await;
                 hardware.wave().await;
-                eyes.black().await;
+                eyes.fade_out().await;
             }
         }
     }

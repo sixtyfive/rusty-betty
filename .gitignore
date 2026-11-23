@@ -1,4 +1,5 @@
-config.toml
+.cargo/
 target/
+config.toml
 winkekatze-js/
 microcat/

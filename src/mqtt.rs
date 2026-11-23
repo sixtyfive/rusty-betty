@@ -23,9 +23,6 @@ enum Error {
 pub async fn task(stack: Stack<'static>) -> ! {
     loop {
         stack.wait_config_up().await;
-        if let Some(cfg) = stack.config_v4() {
-            println!("net: IP {}", cfg.address);
-        }
         match session(stack).await {
             Ok(()) => println!("MQTT session ended"),
             Err(e) => println!("MQTT error: {:?}", e),
@@ -62,7 +59,7 @@ async fn session(stack: Stack<'static>) -> Result<(), Error> {
     let mut buffer = AllocBuffer;
     let mut client = Client::<'_, '_, _, _, 1, 1, 1, 1, 16, 0, 1>::new(&mut buffer);
 
-    let id = alloc::format!("cat-{}", crate::CAT_NAME);
+    let id = alloc::format!("cat-{}", crate::CAT_NAME_LOWER);
     let options = ConnectOptions::new()
         .clean_start()
         .keep_alive(KeepAlive::Seconds(NonZero::new(crate::MQTT_KEEPALIVE_SECS).unwrap()));

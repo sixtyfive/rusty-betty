@@ -23,7 +23,9 @@ fn main() {
     let mut out = String::new();
     writeln!(out, "pub const WIFI_SSID: &str = {:?};", s("wifi", "ssid")).unwrap();
     writeln!(out, "pub const WIFI_PASSWORD: &str = {:?};", s("wifi", "password")).unwrap();
-    writeln!(out, "pub const CAT_NAME: &str = {:?};", s("cat", "name")).unwrap();
+    let cat_name = s("cat", "name");
+    writeln!(out, "pub const CAT_NAME: &str = {cat_name:?};").unwrap();
+    writeln!(out, "pub const CAT_NAME_LOWER: &str = {:?};", cat_name.to_lowercase()).unwrap();
 
     let url = s("mqtt", "url");
     let rest = url

@@ -10,4 +10,27 @@ You'll need rustup. On ArchLinux-based Linux distros, that's just `sudo pacman -
 cargo run --release
 ```
 
-Yes, that's it. The first time around, it'll download a shit-ton of stuff, though.
+Yes, that's it. The first time around, it'll download a shit-ton of stuff, though. One thing: if you only edit config.toml you'll have to `touch build.rs` in order for Cargo to pick up on those changes!
+
+## Status LED Error Codes
+
+The built-in RGB LED next to the Zero's USB-C port will go green if all is well after boot (WiFi, DHCP, MQTT), and if all _stays_ well for 20s, will
+turn itself off so as to not shine through the cat body all the time.
+
+If, however, at some point anything goes wrong, it will act as a debugging
+helper:
+
+| # of blinks | problem              |
+| ----------- | -------------------- |
+| 1           | WiFi connection lost |
+| 2           | DHCP lease lost      |
+| 3           | MQTT connection lost |
+
+## Testing
+
+Anything that's hardware-independent (LED pulse, fade, color helpers) isn't in ./src/, but in ./betty-core/src/ so that there can also be tests and the Rust linter leaves me in peace (otherwise it'll complain about a missing test create). You can run the tests like so:
+
+```
+cargo test --manifest-path betty-core/Cargo.toml \
+    --target x86_64-unknown-linux-gnu --target-dir target/host
+```

@@ -5,12 +5,15 @@ edition = "2021"
 default-run = "rusty-betty"
 
 [dependencies]
+betty-core = { path = "betty-core" }
 esp-hal = { version = "~1.2.2", features = ["esp32c6", "unstable"] }
 esp-hal-smartled = { version = "0.18.0" }
+
 # the versions with which esp-hal-smartled 0.18.0. was tested
 esp-backtrace = { version = "0.20", features = ["esp32c6", "panic-handler", "println"] }
 esp-println = { version = "0.18.0", features = ["esp32c6", "auto"] }
 esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32c6"] }
+
 smart-leds = "0.4.0"
 esp-rtos = { version = "0.4.0", features = ["esp32c6", "embassy", "esp-radio", "esp-alloc"] }
 esp-radio = { version = "=1.0.0-beta.1", features = ["esp32c6", "wifi", "esp-alloc"] }
@@ -26,6 +29,16 @@ nb = "1"
 
 [build-dependencies]
 toml = "0.8"
+
+[[bin]]
+name = "rusty-betty"
+path = "src/main.rs"
+
+# since we're targetting actual bare metal and there's no harness,
+# there's also no testing ... for the few things that were easily
+# testable, there's now a "betty-core" crate with another Cargo.toml
+test = false
+harness = false
 
 [profile.release]
 opt-level = "s"

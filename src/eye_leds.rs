@@ -3,10 +3,9 @@ use esp_hal::{gpio::interconnect::PeripheralOutput, rmt::TxChannelCreator, time:
 use esp_hal_smartled::{buffer_size, color_order, RmtSmartLeds, WS2812B_TIMING};
 use smart_leds::{SmartLedsWriteAsync, RGB8};
 
-use betty_core::led::scale;
-pub use betty_core::led::{
-  color_by_name, wink_phases, Fade, Health, Pulse, StatusLed, BLACK, BLUE, GREEN, PULSE_MAX,
-  WINK_CYCLES, YELLOW,
+use betty_core::eye_leds::scale;
+pub use betty_core::eye_leds::{
+  color_by_name, wink_phases, Fade, Pulse, BLACK, BLUE, GREEN, PULSE_MAX, WINK_CYCLES, YELLOW,
 };
 
 const LED_COUNT: usize = 2;

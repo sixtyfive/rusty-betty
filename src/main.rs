@@ -21,9 +21,8 @@ use esp_hal::ledc::{
   LSGlobalClkSource, Ledc, LowSpeed,
 };
 use esp_hal::{clock::CpuClock, rmt::Rmt, time::Rate, timer::timg::TimerGroup};
-use esp_hal_smartled::{buffer_size, color_order, RmtSmartLeds, WS2812B_TIMING};
 use esp_println::println;
-use smart_leds::{SmartLedsWriteAsync, RGB8};
+use smart_leds::RGB8;
 #[cfg(actuator_servo)]
 use static_cell::StaticCell;
 
@@ -34,7 +33,8 @@ const BOOT_YELLOW_PERIOD: Duration = Duration::from_millis(1500);
 
 include!(concat!(env!("OUT_DIR"), "/config.rs"));
 
-mod led;
+mod eye_leds;
+mod led_builtin;
 #[cfg(actuator_magnet)]
 mod magnet;
 mod mqtt;
@@ -101,14 +101,8 @@ async fn main(spawner: Spawner) -> ! {
 
   let freq = Rate::from_mhz(80);
   let rmt = Rmt::new(p.RMT, freq).unwrap().into_async();
-  let mut status_led = RmtSmartLeds::<{ buffer_size::<RGB8>(1) }, _, RGB8, color_order::Rgb>::new(
-    WS2812B_TIMING,
-    rmt.channel0,
-    pin_onboard_led!(p),
-    freq,
-  )
-  .unwrap();
-  let eyes = led::Eyes::new(rmt.channel1, pin_ext_leds!(p), freq);
+  let mut status_led = led_builtin::BuiltinLed::new(rmt.channel0, pin_onboard_led!(p), freq);
+  let eyes = eye_leds::Eyes::new(rmt.channel1, pin_ext_leds!(p), freq);
 
   #[cfg(actuator_magnet)]
   let magnet = magnet::Magnet::new(pin_blink!(p), false);
@@ -143,24 +137,17 @@ async fn main(spawner: Spawner) -> ! {
   let stack = wifi::start(spawner, p.WIFI);
   spawner.spawn(mqtt::task(stack, COMMANDS.sender()).unwrap());
 
-  let mut status = led::StatusLed::new();
-  let mut shown: Option<RGB8> = None;
+  let mut status = led_builtin::StatusLed::new();
 
   loop {
-    let health = led::Health::new(
+    let health = led_builtin::Health::new(
       WIFI_UP.load(Ordering::Relaxed),
       IP_UP.load(Ordering::Relaxed),
       MQTT_UP.load(Ordering::Relaxed),
     );
     let frame = status.next(health, Instant::now().as_millis());
 
-    if frame.color != shown {
-      status_led
-        .write([frame.color.unwrap_or(led::BLACK)])
-        .await
-        .unwrap();
-      shown = frame.color;
-    }
+    status_led.show(frame.color).await;
 
     Timer::after(Duration::from_millis(frame.wait_ms)).await;
   }
@@ -168,13 +155,13 @@ async fn main(spawner: Spawner) -> ! {
 
 #[embassy_executor::task]
 async fn cat_task(
-  mut eyes: led::Eyes<'static>,
+  mut eyes: eye_leds::Eyes<'static>,
   mut hardware: CatHardware,
   receiver: Receiver<'static, CriticalSectionRawMutex, Command, 8>,
 ) -> ! {
   let boot_started = Instant::now();
-  let mut pulse = led::Pulse::new();
-  let mut fade = led::Fade::new(led::YELLOW);
+  let mut pulse = eye_leds::Pulse::new();
+  let mut fade = eye_leds::Fade::new(eye_leds::YELLOW);
   let mut last_phase = u8::MAX;
   let mut booting = true;
   let mut pending = None;
@@ -182,11 +169,11 @@ async fn cat_task(
   loop {
     while booting {
       let (phase, target) = if IP_UP.load(Ordering::Relaxed) {
-        (2, led::GREEN)
+        (2, eye_leds::GREEN)
       } else if boot_started.elapsed() < BOOT_YELLOW_PERIOD {
-        (0, led::YELLOW)
+        (0, eye_leds::YELLOW)
       } else {
-        (1, led::BLUE)
+        (1, eye_leds::BLUE)
       };
 
       let event = if pending.is_none() {

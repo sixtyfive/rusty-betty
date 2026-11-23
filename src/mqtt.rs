@@ -170,7 +170,7 @@ async fn session(
 
   crate::MQTT_UP.store(true, Ordering::Relaxed);
   println!("Boot complete, waving with green eyes");
-  let _ = commands.try_send(Command::Color(crate::led::GREEN));
+  let _ = commands.try_send(Command::Color(crate::eye_leds::GREEN));
   let _ = commands.try_send(Command::Wink);
 
   let ping_every = Duration::from_millis((crate::MQTT_KEEPALIVE_MS / 2).max(1));
@@ -210,7 +210,7 @@ async fn session(
           }
 
           if topic.ends_with("eye/set") {
-            if let Some(color) = crate::led::color_by_name(&message) {
+            if let Some(color) = crate::eye_leds::color_by_name(&message) {
               let _ = commands.try_send(Command::Color(color));
             }
           } else if topic == "winkekatze/allcats" || topic.ends_with("command") {

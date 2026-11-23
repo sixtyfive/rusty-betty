@@ -6,9 +6,21 @@ password = "..."
 name = "..."
 active_actuator = "both" # "both", "magnet" or "servo"
 
+# eye LED brightness (%)
+led_brightness = 25
+
+# how long each eye-off phase lasts during a wink
+wink_off_ms = 300
+
+# how long the eyes stay on between the two off phases of a wink
+wink_on_ms = 10
+
+# how long the arm keeps swinging after the magnet is switched off
+magnet_coast_ms = 10000
+
 [mqtt]
 url = "mqtt://mqtt.winkekatze24.de:1883"
-keepalive_secs = 30
+keepalive_ms = 30000
 
 # these are for the Winke Vier.Miau boards (any revision)
 # meowbe only change them if you're sure about having to do so...

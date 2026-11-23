@@ -18,6 +18,31 @@ wink_on_ms = 10
 # how long the arm keeps swinging after the magnet is switched off
 magnet_coast_ms = 10000
 
+[servo]
+# neutral/rest angle, in degrees
+middle_angle = 90
+
+# degrees for the servo to move, one after the other:
+# the arm will go from one angle to the next, with a
+# short pause in between
+swing_angles = [155, 25, 155, 50, 130, 75, 105]
+
+# range (again in °) covered by the pulse widths below
+angle_min = 0
+angle_max = 180
+
+# control pulse widths (microseconds) at angle_min / angle_max
+# testing servo was a 4.8V metal-gear 2.2kg ZD Racing Servo
+# (https://www.rovansports.nl/en/servo-22-kg.html)
+pulse_min_us = 800
+pulse_max_us = 2200
+
+# how long the arm takes to move between two angles
+sweep_ms = 300
+
+# steps per movement; higher is smoother (but needs more CPU)
+steps = 20
+
 [mqtt]
 url = "mqtt://mqtt.winkekatze24.de:1883"
 keepalive_ms = 30000

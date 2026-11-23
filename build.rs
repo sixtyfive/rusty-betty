@@ -32,6 +32,20 @@ fn main() {
         .unwrap_or_else(|| panic!("Error: [{sec}] {key}: expected a number!"))
     })
   };
+  let opt_arr = |sec: &str, key: &str| -> Option<Vec<i64>> {
+    cfg.get(sec).and_then(|t| t.get(key)).map(|value| {
+      value
+        .as_array()
+        .unwrap_or_else(|| panic!("Error: [{sec}] {key}: expected an array of numbers!"))
+        .iter()
+        .map(|entry| {
+          entry
+            .as_integer()
+            .unwrap_or_else(|| panic!("Error: [{sec}] {key}: expected an array of numbers!"))
+        })
+        .collect()
+    })
+  };
 
   let mut out = String::new();
   writeln!(out, "pub const WIFI_SSID: &str = {:?};", s("wifi", "ssid")).unwrap();
@@ -72,6 +86,116 @@ fn main() {
   writeln!(
     out,
     "#[allow(dead_code)]\npub const MAGNET_COAST_MS: u64 = {magnet_coast_ms};\n"
+  )
+  .unwrap();
+
+  if cfg.get("servo").and_then(|t| t.get("middle")).is_some() {
+    panic!("Error: [servo] middle was renamed to middle_angle and is now specified in degrees!");
+  }
+
+  let pulse_min_us = opt_i("servo", "pulse_min_us").unwrap_or(800);
+  let pulse_max_us = opt_i("servo", "pulse_max_us").unwrap_or(2200);
+  assert!(
+    pulse_min_us > 0,
+    "Error: [servo] pulse_min_us must be greater than 0!"
+  );
+  assert!(
+    pulse_max_us > pulse_min_us,
+    "Error: [servo] pulse_max_us must be greater than pulse_min_us!"
+  );
+  assert!(
+    pulse_max_us < 20_000,
+    "Error: [servo] pulse_max_us must be shorter than the 20ms PWM period!"
+  );
+  writeln!(
+    out,
+    "#[allow(dead_code)]\npub const SERVO_PULSE_MIN_US: u32 = {pulse_min_us};\n"
+  )
+  .unwrap();
+  writeln!(
+    out,
+    "#[allow(dead_code)]\npub const SERVO_PULSE_MAX_US: u32 = {pulse_max_us};\n"
+  )
+  .unwrap();
+
+  let angle_min = opt_i("servo", "angle_min").unwrap_or(0);
+  let angle_max = opt_i("servo", "angle_max").unwrap_or(180);
+  assert!(
+    (0..=360).contains(&angle_min),
+    "Error: [servo] angle_min must be between 0 and 360!"
+  );
+  assert!(
+    (0..=360).contains(&angle_max),
+    "Error: [servo] angle_max must be between 0 and 360!"
+  );
+  assert!(
+    angle_max > angle_min,
+    "Error: [servo] angle_max must be greater than angle_min!"
+  );
+  writeln!(
+    out,
+    "#[allow(dead_code)]\npub const SERVO_ANGLE_MIN: u16 = {angle_min};\n"
+  )
+  .unwrap();
+  writeln!(
+    out,
+    "#[allow(dead_code)]\npub const SERVO_ANGLE_MAX: u16 = {angle_max};\n"
+  )
+  .unwrap();
+
+  let middle_angle = opt_i("servo", "middle_angle").unwrap_or(90);
+  assert!(
+    angle_min <= middle_angle && middle_angle <= angle_max,
+    "Error: [servo] middle_angle must be between angle_min and angle_max!"
+  );
+  writeln!(
+    out,
+    "#[allow(dead_code)]\npub const SERVO_MIDDLE_ANGLE: u16 = {middle_angle};\n"
+  )
+  .unwrap();
+
+  let swing_angles =
+    opt_arr("servo", "swing_angles").unwrap_or_else(|| vec![155, 25, 155, 50, 130, 75, 105]);
+  assert!(
+    !swing_angles.is_empty(),
+    "Error: [servo] swing_angles must not be empty!"
+  );
+  for angle in &swing_angles {
+    assert!(
+      angle_min <= *angle && *angle <= angle_max,
+      "Error: [servo] swing_angles must contain angles between angle_min and angle_max!"
+    );
+  }
+  let angles = swing_angles
+    .iter()
+    .map(|angle| angle.to_string())
+    .collect::<Vec<_>>()
+    .join(", ");
+  writeln!(
+    out,
+    "#[allow(dead_code)]\npub const SERVO_SWING_ANGLES: &[u16] = &[{angles}];\n"
+  )
+  .unwrap();
+
+  let sweep_ms = opt_i("servo", "sweep_ms").unwrap_or(300);
+  assert!(
+    sweep_ms > 0,
+    "Error: [servo] sweep_ms must be greater than 0!"
+  );
+  writeln!(
+    out,
+    "#[allow(dead_code)]\npub const SERVO_SWEEP_MS: u64 = {sweep_ms};\n"
+  )
+  .unwrap();
+
+  let servo_steps = opt_i("servo", "steps").unwrap_or(20);
+  assert!(
+    servo_steps > 0,
+    "Error: [servo] steps must be greater than 0!"
+  );
+  writeln!(
+    out,
+    "#[allow(dead_code)]\npub const SERVO_STEPS: u64 = {servo_steps};\n"
   )
   .unwrap();
 

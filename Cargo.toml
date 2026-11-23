@@ -7,6 +7,7 @@ default-run = "rusty-betty"
 [dependencies]
 betty-core = { path = "betty-core" }
 esp-hal = { version = "~1.2.2", features = ["esp32c6", "unstable"] }
+embedded-hal = "1.0"
 esp-hal-smartled = { version = "0.18.0" }
 
 # the versions with which esp-hal-smartled 0.18.0. was tested

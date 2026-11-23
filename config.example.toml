@@ -1,0 +1,20 @@
+[wifi]
+ssid = "..."
+password = "..."
+
+[cat]
+name = "..."
+
+[mqtt]
+url = "mqtt://...:1883"
+keepalive_secs = 30
+
+# these are for the Winke Vier.Miau boards, any revision
+[pins]
+onboard_led = 8
+ext_leds = 14
+blink = 22
+i2c_sda = 3
+i2c_scl = 4
+pwm = 21
+adc = 0

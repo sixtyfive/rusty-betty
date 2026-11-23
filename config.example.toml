@@ -4,12 +4,14 @@ password = "..."
 
 [cat]
 name = "..."
+active_actuator = "both" # "both", "magnet" or "servo"
 
 [mqtt]
-url = "mqtt://...:1883"
+url = "mqtt://mqtt.winkekatze24.de:1883"
 keepalive_secs = 30
 
-# these are for the Winke Vier.Miau boards, any revision
+# these are for the Winke Vier.Miau boards (any revision)
+# meowbe only change them if you're sure about having to do so...
 [pins]
 onboard_led = 8
 ext_leds = 14

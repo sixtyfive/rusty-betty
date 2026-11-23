@@ -21,7 +21,7 @@ pub const STATUS_OK_HOLD_MS: u64 = 20_000;
 
 const STATUS_POLL_MS: u64 = 250;
 
-const STATUS_BLINK_ON_MS: u64 = 250;
+const STATUS_BLINK_ON_MS: u64 = 50;
 const STATUS_BLINK_OFF_MS: u64 = 250;
 const STATUS_BLINK_GAP_MS: u64 = 1_500;
 

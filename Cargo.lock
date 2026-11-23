@@ -24,6 +24,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "betty-core"
+version = "0.1.0"
+dependencies = [
+ "smart-leds",
+]
+
+[[package]]
 name = "bitfield"
 version = "0.19.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1591,6 +1598,7 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 name = "rusty-betty"
 version = "0.1.0"
 dependencies = [
+ "betty-core",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",

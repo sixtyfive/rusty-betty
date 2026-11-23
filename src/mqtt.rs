@@ -29,7 +29,34 @@ enum Error {
     Dns,
     Tcp,
     Timeout,
-    Mqtt,
+    Mqtt(String),
+}
+
+impl Error {
+    fn mqtt(context: &str, detail: impl core::fmt::Debug) -> Self {
+        Error::Mqtt(alloc::format!("{context}: {detail:?}"))
+    }
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Dns => write!(f, "DNS lookup for {} failed", crate::MQTT_HOST),
+            Error::Tcp => write!(
+                f,
+                "TCP connection to {}:{} failed",
+                crate::MQTT_HOST,
+                crate::MQTT_PORT
+            ),
+            Error::Timeout => write!(
+                f,
+                "TCP connection to {}:{} timed out",
+                crate::MQTT_HOST,
+                crate::MQTT_PORT
+            ),
+            Error::Mqtt(detail) => f.write_str(detail),
+        }
+    }
 }
 
 #[embassy_executor::task]
@@ -41,7 +68,7 @@ pub async fn task(
         stack.wait_config_up().await;
         match session(stack, commands).await {
             Ok(()) => println!("MQTT session ended"),
-            Err(e) => println!("MQTT error: {:?}", e),
+            Err(e) => println!("MQTT error: {}", e),
         }
         crate::MQTT_UP.store(false, Ordering::Relaxed);
         Timer::after(Duration::from_secs(5)).await;
@@ -70,9 +97,7 @@ async fn session(
     let mut rx = [0u8; 1024];
     let mut tx = [0u8; 1024];
     let mut socket = TcpSocket::new(stack, &mut rx, &mut tx);
-    socket.set_timeout(Some(Duration::from_secs(
-        crate::MQTT_KEEPALIVE_SECS as u64 * 2,
-    )));
+    socket.set_timeout(Some(Duration::from_millis(crate::MQTT_KEEPALIVE_MS * 2)));
 
     match with_timeout(
         Duration::from_secs(10),
@@ -99,52 +124,47 @@ async fn session(
     let will_topic = topic_name(&connected_topic)?;
     let will = WillOptions::new(
         will_topic,
-        MqttBinary::try_from("0").map_err(|_| Error::Mqtt)?,
+        MqttBinary::try_from("0").map_err(|e| Error::mqtt("encoding will payload", e))?,
     )
     .retain();
 
+    let keepalive_secs = (crate::MQTT_KEEPALIVE_MS / 1000).clamp(1, u16::MAX as u64) as u16;
     let options = ConnectOptions::new()
         .clean_start()
         .will(will)
-        .keep_alive(KeepAlive::Seconds(
-            NonZero::new(crate::MQTT_KEEPALIVE_SECS).unwrap(),
-        ));
-    let client_id = MqttString::try_from(id.as_str()).map_err(|_| Error::Mqtt)?;
+        .keep_alive(KeepAlive::Seconds(NonZero::new(keepalive_secs).unwrap()));
+    let client_id =
+        MqttString::try_from(id.as_str()).map_err(|e| Error::mqtt("encoding client id", e))?;
 
     client
         .connect(socket, &options, Some(client_id))
         .await
-        .map_err(|e| {
-            println!("MQTT connection failed: {:?}", e);
-            Error::Mqtt
-        })?;
+        .map_err(|e| Error::mqtt("connect", e))?;
     println!(
-        "Connected to MQTT as '{}', keepalive {}s",
+        "Connected to MQTT as '{}', keepalive {}ms",
         id,
-        crate::MQTT_KEEPALIVE_SECS
+        crate::MQTT_KEEPALIVE_MS
     );
 
-    let own_filter =
-        TopicFilter::new(MqttString::try_from(command_filter.as_str()).map_err(|_| Error::Mqtt)?)
-            .ok_or(Error::Mqtt)?;
+    let own_filter = TopicFilter::new(
+        MqttString::try_from(command_filter.as_str())
+            .map_err(|e| Error::mqtt("encoding subscription filter", e))?,
+    )
+    .ok_or_else(|| Error::Mqtt(String::from("invalid subscription filter topic")))?;
     client
         .subscribe(own_filter, &SubscriptionOptions::new())
         .await
-        .map_err(|e| {
-            println!("MQTT subscribe failed: {:?}", e);
-            Error::Mqtt
-        })?;
+        .map_err(|e| Error::mqtt("subscribe to own topic", e))?;
 
-    let allcats =
-        TopicFilter::new(MqttString::try_from(allcats_filter.as_str()).map_err(|_| Error::Mqtt)?)
-            .ok_or(Error::Mqtt)?;
+    let allcats = TopicFilter::new(
+        MqttString::try_from(allcats_filter.as_str())
+            .map_err(|e| Error::mqtt("encoding allcats filter", e))?,
+    )
+    .ok_or_else(|| Error::Mqtt(String::from("invalid allcats filter topic")))?;
     client
         .subscribe(allcats, &SubscriptionOptions::new())
         .await
-        .map_err(|e| {
-            println!("MQTT subscribe failed: {:?}", e);
-            Error::Mqtt
-        })?;
+        .map_err(|e| Error::mqtt("subscribe to allcats", e))?;
 
     publish(&mut client, &connected_topic, "1", true).await?;
 
@@ -153,27 +173,22 @@ async fn session(
     let _ = commands.try_send(Command::Color(crate::led::GREEN));
     let _ = commands.try_send(Command::Wink);
 
-    let ping_every = Duration::from_secs((crate::MQTT_KEEPALIVE_SECS as u64 / 2).max(1));
+    let ping_every = Duration::from_millis((crate::MQTT_KEEPALIVE_MS / 2).max(1));
     let mut next_ping = Instant::now() + ping_every;
     loop {
         let r = select(Timer::at(next_ping), client.poll_header()).await;
         match r {
             Either::First(()) => {
                 next_ping = Instant::now() + ping_every;
-                client.ping().await.map_err(|e| {
-                    println!("MQTT ping failed: {:?}", e);
-                    Error::Mqtt
-                })?
+                client.ping().await.map_err(|e| Error::mqtt("ping", e))?
             }
             Either::Second(header) => {
-                let header = header.map_err(|e| {
-                    println!("MQTT error in poll header: {:?}", e);
-                    Error::Mqtt
-                })?;
-                let published = match client.poll_body(header).await.map_err(|e| {
-                    println!("MQTT error in poll body: {:?}", e);
-                    Error::Mqtt
-                })? {
+                let header = header.map_err(|e| Error::mqtt("poll header", e))?;
+                let published = match client
+                    .poll_body(header)
+                    .await
+                    .map_err(|e| Error::mqtt("poll body", e))?
+                {
                     Event::Publish(Publish { topic, message, .. }) => topic.name().map(|name| {
                         (
                             String::from(name.as_ref().as_str()),
@@ -215,7 +230,8 @@ async fn session(
 }
 
 fn topic_name(name: &str) -> Result<TopicName<'_>, Error> {
-    TopicName::new(MqttString::try_from(name).map_err(|_| Error::Mqtt)?).ok_or(Error::Mqtt)
+    TopicName::new(MqttString::try_from(name).map_err(|e| Error::mqtt("encoding topic name", e))?)
+        .ok_or_else(|| Error::Mqtt(alloc::format!("invalid topic name '{name}'")))
 }
 
 async fn publish<
@@ -248,9 +264,6 @@ where
     client
         .publish(&options, Bytes::from(message))
         .await
-        .map_err(|e| {
-            println!("MQTT publish failed: {:?}", e);
-            Error::Mqtt
-        })?;
+        .map_err(|e| Error::mqtt(&alloc::format!("publish to '{topic}'"), e))?;
     Ok(())
 }

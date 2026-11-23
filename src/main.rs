@@ -6,7 +6,6 @@ extern crate alloc;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use embassy_executor::Spawner;
-#[cfg(all(actuator_magnet, actuator_servo))]
 use embassy_futures::join::join;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{
@@ -30,9 +29,7 @@ use static_cell::StaticCell;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-/// How often the boot animation updates the eye LEDs.
 const BOOT_PULSE_INTERVAL: Duration = Duration::from_millis(25);
-/// How long the eyes pulse yellow before showing WiFi/MQTT progress.
 const BOOT_YELLOW_PERIOD: Duration = Duration::from_millis(1500);
 
 include!(concat!(env!("OUT_DIR"), "/config.rs"));
@@ -74,6 +71,21 @@ impl CatHardware {
         self.magnet.wave().await;
         #[cfg(all(actuator_servo, not(actuator_magnet)))]
         self.servo.wave().await;
+    }
+
+    fn wave_duration(&self) -> Duration {
+        #[cfg(all(actuator_magnet, actuator_servo))]
+        {
+            self.magnet.wave_duration().max(self.servo.wave_duration())
+        }
+        #[cfg(all(actuator_magnet, not(actuator_servo)))]
+        {
+            self.magnet.wave_duration()
+        }
+        #[cfg(all(actuator_servo, not(actuator_magnet)))]
+        {
+            self.servo.wave_duration()
+        }
     }
 }
 
@@ -132,27 +144,26 @@ async fn main(spawner: Spawner) -> ! {
     let stack = wifi::start(spawner, p.WIFI);
     spawner.spawn(mqtt::task(stack, COMMANDS.sender()).unwrap());
 
-    let mut last_status = u8::MAX;
-    loop {
-        let (status, color) = if MQTT_UP.load(Ordering::Relaxed) {
-            (2, RGB8::new(0, 20, 0))
-        } else if WIFI_UP.load(Ordering::Relaxed) {
-            (1, RGB8::new(20, 8, 0))
-        } else {
-            (0, RGB8::new(20, 0, 0))
-        };
+    let mut status = led::StatusLed::new();
+    let mut shown: Option<RGB8> = None;
 
-        if status != last_status {
-            match status {
-                0 => println!("Built-in LED red (waiting for WiFi)"),
-                1 => println!("Built-in LED yellow (waiting for MQTT)"),
-                _ => println!("Built-in LED green (online)"),
-            }
-            last_status = status;
+    loop {
+        let health = led::Health::new(
+            WIFI_UP.load(Ordering::Relaxed),
+            IP_UP.load(Ordering::Relaxed),
+            MQTT_UP.load(Ordering::Relaxed),
+        );
+        let frame = status.next(health, Instant::now().as_millis());
+
+        if frame.color != shown {
+            status_led
+                .write([frame.color.unwrap_or(led::BLACK)])
+                .await
+                .unwrap();
+            shown = frame.color;
         }
 
-        status_led.write([color]).await.unwrap();
-        Timer::after(Duration::from_millis(250)).await;
+        Timer::after(Duration::from_millis(frame.wait_ms)).await;
     }
 }
 
@@ -169,10 +180,6 @@ async fn cat_task(
     let mut booting = true;
     let mut pending = None;
 
-    // Pulse the eyes while booting: yellow first, then blue until an IP address
-    // is acquired, then green while waiting for MQTT. Commands are only handled
-    // once the color transition has settled, so MQTT coming online cannot cut a
-    // fade short.
     loop {
         while booting {
             let (phase, target) = if IP_UP.load(Ordering::Relaxed) {
@@ -196,9 +203,9 @@ async fn cat_task(
 
             if phase != last_phase {
                 match phase {
-                    0 => println!("Eye LEDs pulsing yellow (bootup...)"),
-                    1 => println!("Eye LEDs pulsing blue (waiting for WiFi/IP)"),
-                    _ => println!("Eye LEDs pulsing green (waiting for MQTT)"),
+                    0 => println!("Booting..."),
+                    1 => println!("Waiting for DHCP..."),
+                    _ => println!("Waiting for MQTT..."),
                 }
                 last_phase = phase;
             }
@@ -221,8 +228,7 @@ async fn cat_task(
                 eyes.set_color(color).await;
             }
             Command::Wink => {
-                eyes.show().await;
-                hardware.wave().await;
+                join(eyes.wink(hardware.wave_duration()), hardware.wave()).await;
                 eyes.fade_out().await;
             }
         }

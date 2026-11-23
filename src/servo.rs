@@ -51,6 +51,10 @@ impl<'a> Servo<'a> {
         self.set(0);
     }
 
+    pub fn wave_duration(&self) -> Duration {
+        Duration::from_millis(self.pause_ms * 14)
+    }
+
     fn set(&self, duty_pct: u8) {
         let _ = self.channel.set_duty(duty_pct);
     }

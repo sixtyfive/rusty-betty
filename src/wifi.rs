@@ -14,15 +14,17 @@ use static_cell::StaticCell;
 static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
 
 pub fn start(spawner: Spawner, wifi: WIFI<'static>) -> Stack<'static> {
-    let mut controller =
-        WifiController::new(wifi, ControllerConfig::default()).expect("Error: WiFi initialisation failed!");
+    let mut controller = WifiController::new(wifi, ControllerConfig::default())
+        .expect("Error: WiFi initialisation failed!");
 
     let station = StationConfig::default()
         .with_ssid(crate::WIFI_SSID.try_into().unwrap())
         .with_authentication(AuthenticationMethodConfig::Wpa2Personal(
             crate::WIFI_PASSWORD.try_into().unwrap(),
         ));
-    controller.set_config(&WifiConfig::Station(station)).unwrap();
+    controller
+        .set_config(&WifiConfig::Station(station))
+        .unwrap();
 
     let rng = Rng::new();
     let seed = ((rng.random() as u64) << 32) | rng.random() as u64;
@@ -53,8 +55,6 @@ async fn ip_task(stack: Stack<'static>) -> ! {
         stack.wait_config_up().await;
         crate::IP_UP.store(true, Ordering::Relaxed);
         if let Some(cfg) = stack.config_v4() {
-            // embassy-net does not expose the DHCP server identifier (option 54),
-            // so use the gateway, which is normally the DHCP server anyway.
             match cfg.gateway {
                 Some(gateway) => println!(
                     "DHCP: acquired {}/{} from server {} (hostname '{}')",
@@ -86,7 +86,16 @@ async fn connection_task(mut controller: WifiController<'static>) {
     loop {
         match controller.connect_async().await {
             Ok(_) => {
-                println!("Connected to '{}'", crate::WIFI_SSID);
+                match controller.rssi() {
+                    Ok(rssi) => {
+                        println!("Connected to '{}' (rssi: {} dBm)", crate::WIFI_SSID, rssi)
+                    }
+                    Err(e) => println!(
+                        "Connected to '{}' (rssi unavailable: {:?})",
+                        crate::WIFI_SSID,
+                        e
+                    ),
+                }
                 crate::WIFI_UP.store(true, Ordering::Relaxed);
                 let _ = controller.wait_for_disconnect_async().await;
                 crate::WIFI_UP.store(false, Ordering::Relaxed);

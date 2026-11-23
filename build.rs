@@ -24,6 +24,13 @@ fn main() {
             .as_integer()
             .unwrap_or_else(|| panic!("Error: [{sec}] {key}: expected a number!"))
     };
+    let opt_i = |sec: &str, key: &str| -> Option<i64> {
+        cfg.get(sec).and_then(|t| t.get(key)).map(|value| {
+            value
+                .as_integer()
+                .unwrap_or_else(|| panic!("Error: [{sec}] {key}: expected a number!"))
+        })
+    };
 
     let mut out = String::new();
     writeln!(out, "pub const WIFI_SSID: &str = {:?};", s("wifi", "ssid")).unwrap();
@@ -41,6 +48,38 @@ fn main() {
         cat_name.to_lowercase()
     )
     .unwrap();
+
+    let wink_off_ms = opt_i("cat", "wink_off_ms").unwrap_or(300);
+    assert!(
+        wink_off_ms >= 0,
+        "Error: [cat] wink_off_ms must not be negative!"
+    );
+    writeln!(out, "pub const WINK_OFF_MS: u64 = {wink_off_ms};\n").unwrap();
+
+    let wink_on_ms = opt_i("cat", "wink_on_ms").unwrap_or(500);
+    assert!(
+        wink_on_ms >= 0,
+        "Error: [cat] wink_on_ms must not be negative!"
+    );
+    writeln!(out, "pub const WINK_ON_MS: u64 = {wink_on_ms};\n").unwrap();
+
+    let magnet_coast_ms = opt_i("cat", "magnet_coast_ms").unwrap_or(10_000);
+    assert!(
+        magnet_coast_ms >= 0,
+        "Error: [cat] magnet_coast_ms must not be negative!"
+    );
+    writeln!(
+        out,
+        "#[allow(dead_code)]\npub const MAGNET_COAST_MS: u64 = {magnet_coast_ms};\n"
+    )
+    .unwrap();
+
+    let led_brightness = opt_i("cat", "led_brightness").unwrap_or(100);
+    assert!(
+        (0..=100).contains(&led_brightness),
+        "Error: [cat] led_brightness must be between 0 and 100!"
+    );
+    writeln!(out, "pub const LED_BRIGHTNESS: u8 = {led_brightness};\n").unwrap();
 
     println!("cargo:rustc-check-cfg=cfg(actuator_magnet)");
     println!("cargo:rustc-check-cfg=cfg(actuator_servo)");
@@ -70,12 +109,12 @@ fn main() {
     writeln!(out, "pub const MQTT_HOST: &str = {host:?};").unwrap();
     writeln!(out, "pub const MQTT_PORT: u16 = {port};").unwrap();
 
-    let ka = i("mqtt", "keepalive_secs");
+    let keepalive_ms = opt_i("mqtt", "keepalive_ms").unwrap_or(30_000);
     assert!(
-        (1..=65535).contains(&ka),
-        "Error: MQTT keepalive must be between 1 and 65535!"
+        keepalive_ms > 0,
+        "Error: [mqtt] keepalive_ms must be greater than 0!"
     );
-    writeln!(out, "pub const MQTT_KEEPALIVE_SECS: u16 = {ka};").unwrap();
+    writeln!(out, "pub const MQTT_KEEPALIVE_MS: u64 = {keepalive_ms};").unwrap();
 
     let mut used = HashSet::new();
     for key in [

@@ -28,6 +28,15 @@ helper:
 
 ## Testing
 
+### Hardware
+
+There is board test code that exercises all peripherals broken out on the
+Winke Vier.Miau board in src/board_test.rs.
+
+Build and upload using `cargo run --release --bin board_test`.
+
+### Software
+
 Anything that's hardware-independent (LED pulse, fade, color helpers) isn't in ./src/, but in ./betty-core/src/ so that there can also be tests and the Rust linter leaves me in peace (otherwise it'll complain about a missing test create). You can run the tests like so:
 
 ```

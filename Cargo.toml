@@ -35,6 +35,10 @@ toml = "0.8"
 name = "rusty-betty"
 path = "src/main.rs"
 
+[[bin]]
+name = "board_test"
+path = "src/board_test.rs"
+
 # since we're targetting actual bare metal and there's no harness,
 # there's also no testing ... for the few things that were easily
 # testable, there's now a "betty-core" crate with another Cargo.toml

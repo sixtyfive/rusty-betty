@@ -101,7 +101,7 @@ fn main() -> ! {
     if addr > 126 {
       addr = 1;
       if found != last_found {
-        println!("I2C-Geraete (Bitmaske): {:#034x}", found);
+        println!("I²C device bitmask: {:#034x}", found);
         last_found = found;
       }
       found = 0;
@@ -121,7 +121,7 @@ fn main() -> ! {
 
       win_count += 1;
       if win_count % 10 == 0 {
-        println!("adc: raw={} pp={} lvl={}", raw, pp, lvl);
+        println!("ADC: raw={} pp={} lvl={}", raw, pp, lvl);
       }
 
       if lvl != last_lvl {

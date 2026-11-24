@@ -7,6 +7,7 @@ A rust-based Winkekatze for [Winkekatze24](https://www.winkekatze24.de/). More s
 You'll need rustup. On ArchLinux-based Linux distros, that's just `sudo pacman -Sy rustup`. Then:
 
 ```
+rustup target add riscv32imac-unknown-none-elf # only once
 cargo run --release
 ```
 

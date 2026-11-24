@@ -1,0 +1,11 @@
+[build]
+target = "riscv32imac-unknown-none-elf"
+
+# Unit tests run on the host; the firmware target is bare metal and has no
+# `test` crate. Invoke this from the repository root.
+[alias]
+test-core = "test --manifest-path betty-core/Cargo.toml --target-dir target/host --target x86_64-unknown-linux-gnu"
+
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --monitor"
+rustflags = ["-C", "link-arg=-Tlinkall.x"]

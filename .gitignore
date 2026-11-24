@@ -1,4 +1,3 @@
-.cargo/
 target/
 config.toml
 betty-core/Cargo.lock

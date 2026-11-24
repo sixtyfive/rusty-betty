@@ -4,14 +4,21 @@ A rust-based Winkekatze for [Winkekatze24](https://www.winkekatze24.de/). More s
 
 ## Building
 
-You'll need rustup. On ArchLinux-based Linux distros, that's just `sudo pacman -Sy rustup`. Then:
+You'll need rustup and espflash. On ArchLinux-based Linux distros: `sudo pacman -Sy rustup espflash`. You'll also need the RISC-V target:
 
 ```
 rustup target add riscv32imac-unknown-none-elf # only once
-cargo run --release
 ```
 
-Yes, that's it. The first time around, it'll download a shit-ton of stuff, though. One thing: if you only edit config.toml you'll have to `touch build.rs` in order for Cargo to pick up on those changes!
+Copy `config.example.toml` to `config.toml` and fill in at least your WiFi credentials and the cat's name. (`config.toml` is gitignored, so this step is needed after a fresh clone — `build.rs` will panic with `config.toml missing!` otherwise.) Then:
+
+```
+cargo run --release # whenever the code changes
+```
+
+The first when doing `cargo run`, it'll download a shit-ton of stuff. It then uses `.cargo/config.toml` to select the `riscv32imac-unknown-none-elf` target and runs the result through `espflash flash --monitor`.
+
+If you only edit config.toml you'll have to `touch build.rs` in order for Cargo to pick up on those changes.
 
 ## Status LED Error Codes
 
@@ -41,6 +48,7 @@ Build and upload using `cargo run --release --bin board_test`.
 Anything that's hardware-independent (LED pulse, fade, color helpers) isn't in ./src/, but in ./betty-core/src/ so that there can also be tests and the Rust linter leaves me in peace (otherwise it'll complain about a missing test create). You can run the tests like so:
 
 ```
-cargo test --manifest-path betty-core/Cargo.toml \
-    --target x86_64-unknown-linux-gnu --target-dir target/host
+cargo test-core
 ```
+
+That's an alias in `.cargo/config.toml` for running them on the host (`--target x86_64-unknown-linux-gnu --target-dir target/host`).
